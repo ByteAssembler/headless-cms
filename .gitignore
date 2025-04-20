@@ -24,6 +24,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+*-lock.*
+
 # misc
 .DS_Store
 
@@ -32,3 +34,10 @@ lerna-debug.log*
 *hidden*
 *hide*
 *~*
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+drizzle/

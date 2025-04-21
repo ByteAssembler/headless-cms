@@ -6,7 +6,7 @@ import { serve } from '@hono/node-server'
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 
-import { schema } from './output/database.schema';
+import { schema } from '@/output/database.schema';
 
 const client = createClient({ url: process.env.DB_FILE_NAME! });
 const db = drizzle(client, { schema });

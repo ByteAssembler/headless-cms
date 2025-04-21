@@ -3,7 +3,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "db:kit": "drizzle-kit"
+    "db:kit": "drizzle-kit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "test": "vitest",
+    "test:watch": "vitest --watch"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",
@@ -12,11 +16,13 @@
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.42.0",
     "hono": "^4.7.7",
-    "nanoid": "^5.1.5"
+    "nanoid": "^5.1.5",
+    "zod": "^3.24.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
     "drizzle-kit": "^0.31.0",
-    "tsx": "^4.19.3"
+    "tsx": "^4.19.3",
+    "vitest": "^3.1.1"
   }
 }

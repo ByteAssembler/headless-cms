@@ -5,7 +5,9 @@ import {
     defineNumberField,
     defineRelationField,
     defineSlugField,
-    type FieldDefinition
+    type FieldDefinition,
+    defineSelectField,
+    defineTimestamps
 } from './core/content-fields';
 
 // Definiere die Struktur für eine Content-Typ-Konfiguration
@@ -15,16 +17,78 @@ export interface ContentTypeConfig {
     fields: Record<string, FieldDefinition<any, any, any, any>>;
 }
 
-// --- Definitionen der Content-Typen ---
+// --- Auth Schema Definitions ---
 
-export const usersConfig: ContentTypeConfig = {
-    apiIdentifier: 'users',
+export const authUserConfig: ContentTypeConfig = {
+    apiIdentifier: 'users', // Geändert von 'user' zu 'users' für Konsistenz mit Schema
     fields: {
         name: defineTextField('name', { required: true }),
-        isAdmin: defineBooleanField('isAdmin', { defaultValue: false }),
-        // posts: O2M wird von der 'posts'-Seite definiert
+        email: defineTextField('email', { required: true, unique: true }),
+        emailVerified: defineBooleanField('emailVerified', { defaultValue: false }),
+        image: defineTextField('image', { required: false }),
+        role: defineSelectField('role', {
+            options: [
+                "admin",
+                "client",
+                "user",
+            ],
+            defaultValue: 'user',
+            uiWidget: 'select'
+        }),
+        ...defineTimestamps()
     }
 };
+
+export const sessionConfig: ContentTypeConfig = {
+    apiIdentifier: 'session',
+    fields: {
+        expiresAt: defineDateTimeField('expiresAt', { required: true }),
+        token: defineTextField('token', { required: true, unique: true }),
+        ipAddress: defineTextField('ipAddress', { required: false }),
+        userAgent: defineTextField('userAgent', { required: false }),
+        user: defineRelationField('user', {
+            relationTo: 'users', // Geändert von 'user' zu 'users' für Konsistenz
+            many: false,
+            required: true
+        }),
+        ...defineTimestamps()
+    }
+};
+
+export const accountConfig: ContentTypeConfig = {
+    apiIdentifier: 'account',
+    fields: {
+        accountId: defineTextField('accountId', { required: true }),
+        providerId: defineTextField('providerId', { required: true }),
+        user: defineRelationField('user', {
+            relationTo: 'users', // Geändert von 'user' zu 'users' für Konsistenz
+            many: false,
+            required: true
+        }),
+        accessToken: defineTextField('accessToken', { required: false }),
+        refreshToken: defineTextField('refreshToken', { required: false }),
+        idToken: defineTextField('idToken', { required: false }),
+        accessTokenExpiresAt: defineDateTimeField('accessTokenExpiresAt', { required: false }),
+        refreshTokenExpiresAt: defineDateTimeField('refreshTokenExpiresAt', { required: false }),
+        scope: defineTextField('scope', { required: false }),
+        password: defineTextField('password', { required: false }),
+        // Standard timestamps are automatically added in schema.ts
+        ...defineTimestamps()
+    }
+};
+
+export const verificationConfig: ContentTypeConfig = {
+    apiIdentifier: 'verification',
+    fields: {
+        identifier: defineTextField('identifier', { required: true }),
+        value: defineTextField('value', { required: true }),
+        expiresAt: defineDateTimeField('expiresAt', { required: true }),
+        // Standard timestamps are automatically added in schema.ts
+        ...defineTimestamps()
+    }
+};
+
+// --- Definitionen der Content-Typen ---
 
 export const postsConfig: ContentTypeConfig = {
     apiIdentifier: 'posts',
@@ -34,7 +98,7 @@ export const postsConfig: ContentTypeConfig = {
         content: defineTextField('content', { uiWidget: 'textarea' }),
         publishedAt: defineDateTimeField('publishedAt', { required: false }),
         author: defineRelationField('author', { // M2O / FK
-            relationTo: 'users',
+            relationTo: 'users', // Bleibt bei 'users', da authUserConfig jetzt korrekt auf 'users' verweist
             many: false,
             required: true, // Ein Post muss einen Autor haben
             uiWidget: 'relationPicker'
@@ -58,8 +122,11 @@ export const categoriesConfig: ContentTypeConfig = {
 
 // --- Sammlung aller Konfigurationen ---
 
-export const allContentTypeConfigs: Record<string, ContentTypeConfig> = {
-    [usersConfig.apiIdentifier]: usersConfig,
+export const allContentTypeConfigs = {
+    [authUserConfig.apiIdentifier]: authUserConfig, // Korrekte Referenz zu authUserConfig
     [postsConfig.apiIdentifier]: postsConfig,
     [categoriesConfig.apiIdentifier]: categoriesConfig,
+    [sessionConfig.apiIdentifier]: sessionConfig,
+    [accountConfig.apiIdentifier]: accountConfig,
+    [verificationConfig.apiIdentifier]: verificationConfig
 };

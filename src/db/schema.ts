@@ -111,11 +111,17 @@ export const schemaRelations = allGeneratedRelations;
 export const users = allTables['users'] as TableWithId;
 export const posts = allTables['posts'] as TableWithId;
 export const categories = allTables['categories'] as TableWithId;
+export const session = allTables['session'] as TableWithId; // Added export
+export const account = allTables['account'] as TableWithId; // Added export
+export const verification = allTables['verification'] as TableWithId; // Added export
 export const posts_to_categories = allTables['posts_to_categories']; // Join-Tabelle
 
 export const usersRelations = allGeneratedRelations['usersRelations'];
 export const postsRelations = allGeneratedRelations['postsRelations'];
 export const categoriesRelations = allGeneratedRelations['categoriesRelations'];
+export const sessionRelations = allGeneratedRelations['sessionRelations']; // Added export
+export const accountRelations = allGeneratedRelations['accountRelations']; // Added export
+export const verificationRelations = allGeneratedRelations['verificationRelations']; // Added export
 export const posts_to_categoriesRelations = allGeneratedRelations['posts_to_categoriesRelations']; // Join-Tabellen-Relationen
 
 console.log("Schema generation complete.");
@@ -127,10 +133,16 @@ export const schema = {
 	users,
 	posts,
 	categories,
+	session, // Added table
+	account, // Added table
+	verification, // Added table
 	posts_to_categories,
 	// Relationen
 	usersRelations,
 	postsRelations,
 	categoriesRelations,
+	sessionRelations, // Added relations
+	accountRelations, // Added relations
+	verificationRelations, // Added relations
 	posts_to_categoriesRelations,
 };

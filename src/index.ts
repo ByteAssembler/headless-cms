@@ -16,6 +16,18 @@ const app = new Hono()
 app.get('/', async (c) => {
   try {
     const users = await db.query.users.findMany();
+
+    if (users.length === 0) {
+      // Provide values for all required fields (name and email)
+      await db.insert(schema.users).values({
+        name: 'John Doe',
+        email: 'john.doe@example.com' // Added required email field
+      });
+      console.log("Inserted initial user.");
+      // Optionally, you might want to query again or return a different message
+      return c.json({ message: 'Initial user created as DB was empty.' });
+    }
+
     console.log("Users:", users);
     return c.json({ message: 'Hello Hono!', usersCount: users.length });
   } catch (error) {

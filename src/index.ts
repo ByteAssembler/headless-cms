@@ -6,7 +6,7 @@ import { serve } from '@hono/node-server'
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 
-import { schema } from './db/schema';
+import { schema } from './output/database.schema';
 
 const client = createClient({ url: process.env.DB_FILE_NAME! });
 const db = drizzle(client, { schema });
@@ -15,21 +15,15 @@ const app = new Hono()
 
 app.get('/', async (c) => {
   try {
+    await db.insert(schema.users).values({
+      name: 'John Doe',
+      email: 'mail' + Math.random().toString(36).substring(2, 7) + '@example.com',
+      emailVerified: false,
+    });
+
     const users = await db.query.users.findMany();
 
-    if (users.length === 0) {
-      // Provide values for all required fields (name and email)
-      await db.insert(schema.users).values({
-        name: 'John Doe',
-        email: 'john.doe@example.com' // Added required email field
-      });
-      console.log("Inserted initial user.");
-      // Optionally, you might want to query again or return a different message
-      return c.json({ message: 'Initial user created as DB was empty.' });
-    }
-
-    console.log("Users:", users);
-    return c.json({ message: 'Hello Hono!', usersCount: users.length });
+    return c.json({ message: 'Hello Hono!', usersCount: users.length, users: users });
   } catch (error) {
     console.error("DB Query Error:", error);
     return c.json({ message: 'Hello Hono!', error: 'Could not query database' }, 500);

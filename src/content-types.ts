@@ -8,7 +8,7 @@ import {
     type FieldDefinition,
     defineSelectField,
     defineTimestamps
-} from './core/content-fields';
+} from '@/core/content-fields';
 
 // Definiere die Struktur für eine Content-Typ-Konfiguration
 // (Ersetzt PlaceholderContentTypeConfig aus schema-relations.ts)
@@ -19,7 +19,7 @@ export interface ContentTypeConfig {
 
 // --- Auth Schema Definitions ---
 
-export const authUserConfig: ContentTypeConfig = {
+export const userConfig: ContentTypeConfig = {
     apiIdentifier: 'users', // Geändert von 'user' zu 'users' für Konsistenz mit Schema
     fields: {
         name: defineTextField('name', { required: true }),
@@ -123,7 +123,7 @@ export const categoriesConfig: ContentTypeConfig = {
 // --- Sammlung aller Konfigurationen ---
 
 export const allContentTypeConfigs = {
-    [authUserConfig.apiIdentifier]: authUserConfig, // Korrekte Referenz zu authUserConfig
+    [userConfig.apiIdentifier]: userConfig,
     [postsConfig.apiIdentifier]: postsConfig,
     [categoriesConfig.apiIdentifier]: categoriesConfig,
     [sessionConfig.apiIdentifier]: sessionConfig,

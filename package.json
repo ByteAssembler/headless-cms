@@ -8,7 +8,7 @@
     "db:push": "drizzle-kit push",
     "test": "vitest",
     "test:watch": "vitest --watch",
-    "generate:schema": "tsx scripts/generate-schema.ts"
+    "generate:schema": "tsx ./src/scripts/generate-schema.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",

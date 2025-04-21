@@ -19,7 +19,7 @@ export interface ContentTypeConfig {
 
 // --- Auth Schema Definitions ---
 
-export const userConfig: ContentTypeConfig = {
+export const usersConfig: ContentTypeConfig = {
     apiIdentifier: 'users', // Geändert von 'user' zu 'users' für Konsistenz mit Schema
     fields: {
         name: defineTextField('name', { required: true }),
@@ -123,7 +123,7 @@ export const categoriesConfig: ContentTypeConfig = {
 // --- Sammlung aller Konfigurationen ---
 
 export const allContentTypeConfigs = {
-    [userConfig.apiIdentifier]: userConfig,
+    [usersConfig.apiIdentifier]: usersConfig,
     [postsConfig.apiIdentifier]: postsConfig,
     [categoriesConfig.apiIdentifier]: categoriesConfig,
     [sessionConfig.apiIdentifier]: sessionConfig,

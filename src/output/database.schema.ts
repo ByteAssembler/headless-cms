@@ -7,27 +7,27 @@ import type { AnySQLiteColumn, AnySQLiteTable } from 'drizzle-orm/sqlite-core';
 
 // Import the necessary configs and definitions for type safety
 import {
-  allContentTypeConfigs, // Keep for potential dynamic checks if needed
-  // Import specific configs used in table definitions
-  userConfig,
-  postsConfig,
-  categoriesConfig,
-  sessionConfig,
-  accountConfig,
-  verificationConfig,
-} from '../content-types';
-import { defineIdField, defineTimestamps } from '../core/content-fields';
+	allContentTypeConfigs, // Keep for potential dynamic checks if needed
+	// Import specific configs used in table definitions
+	usersConfig,
+	postsConfig,
+	categoriesConfig,
+	sessionConfig,
+	accountConfig,
+	verificationConfig,
+} from '@/content-types';
+import { defineIdField, defineTimestamps } from '@/core/content-fields';
 
 console.log("[Schema] Generated schema definitions loading...");
 
 // --- Generated Table Definitions ---
 export const users = sqliteTable('users', {
   id: defineIdField().column,
-  name: userConfig.fields.name.column,
-  email: userConfig.fields.email.column,
-  emailVerified: userConfig.fields.emailVerified.column,
-  image: userConfig.fields.image.column,
-  role: userConfig.fields.role.column,
+  name: usersConfig.fields.name.column,
+  email: usersConfig.fields.email.column,
+  emailVerified: usersConfig.fields.emailVerified.column,
+  image: usersConfig.fields.image.column,
+  role: usersConfig.fields.role.column,
   createdAt: defineTimestamps().createdAt.column,
   updatedAt: defineTimestamps().updatedAt.column,
 });
@@ -137,18 +137,18 @@ console.log("[Schema] Defining final schema object...");
 
 // --- Generated Schema Object ---
 export const schema = {
-  users,
-  posts,
-  categories,
-  session,
-  account,
-  verification,
-  categories_to_posts,
-  usersRelations,
-  postsRelations,
-  sessionRelations,
-  accountRelations,
-  categories_to_postsRelations,
+	users,
+	posts,
+	categories,
+	session,
+	account,
+	verification,
+	categories_to_posts,
+	usersRelations,
+	postsRelations,
+	sessionRelations,
+	accountRelations,
+	categories_to_postsRelations,
 };
 
 console.log("[Schema] Generation complete.");

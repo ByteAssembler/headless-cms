@@ -12,7 +12,7 @@ const outputFilePath = path.resolve(__dirname, '../output/database.schema.ts');
 // Map apiIdentifier to the *variable name* of the imported config
 // This is crucial for generating the correct code referencing the imports
 const configVariableNames: Record<string, string> = {
-	'users': 'authUserConfig',
+	'users': 'usersConfig',
 	'posts': 'postsConfig',
 	'categories': 'categoriesConfig',
 	'session': 'sessionConfig',
@@ -45,8 +45,8 @@ import {
 Object.values(configVariableNames).forEach(varName => {
 	importStatements += `	${varName},\n`;
 });
-importStatements += `} from '../content-types';
-import { defineIdField, defineTimestamps } from '../core/content-fields';
+importStatements += `} from '@/content-types';
+import { defineIdField, defineTimestamps } from '@/core/content-fields';
 
 console.log("[Schema] Generated schema definitions loading...");
 

@@ -7,16 +7,16 @@ import type { AnySQLiteColumn, AnySQLiteTable } from 'drizzle-orm/sqlite-core';
 
 // Import the necessary configs and definitions for type safety
 import {
-	allContentTypeConfigs, // Keep for potential dynamic checks if needed
-	// Import specific configs used in table definitions
-	usersConfig,
-	postsConfig,
-	categoriesConfig,
-	sessionConfig,
-	accountConfig,
-	verificationConfig,
-} from '@/content-types';
-import { defineIdField, defineTimestamps } from '@/core/content-fields';
+  allContentTypeConfigs, // Keep for potential dynamic checks if needed
+  // Import specific configs used in table definitions
+  usersConfig,
+  postsConfig,
+  categoriesConfig,
+  sessionConfig,
+  accountConfig,
+  verificationConfig,
+} from '@/old/content-types';
+import { defineIdField, defineTimestamps } from '@/old/core/content-fields';
 
 console.log("[Schema] Generated schema definitions loading...");
 
@@ -137,18 +137,18 @@ console.log("[Schema] Defining final schema object...");
 
 // --- Generated Schema Object ---
 export const schema = {
-	users,
-	posts,
-	categories,
-	session,
-	account,
-	verification,
-	categories_to_posts,
-	usersRelations,
-	postsRelations,
-	sessionRelations,
-	accountRelations,
-	categories_to_postsRelations,
+  users,
+  posts,
+  categories,
+  session,
+  account,
+  verification,
+  categories_to_posts,
+  usersRelations,
+  postsRelations,
+  sessionRelations,
+  accountRelations,
+  categories_to_postsRelations,
 };
 
 console.log("[Schema] Generation complete.");

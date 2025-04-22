@@ -1,0 +1,157 @@
+import { ContentTypeBuilder, FieldBuilder } from "./definitionBuilder";
+import { generateZodSchemaFileContent } from "./zodSchemaCodeGenerator";
+
+import * as fs from "fs";
+import * as path from "path";
+import _ from "lodash";
+import { generateDrizzleSchemaFileContent } from "./drizzleSchemaCodeGenerator";
+import { toSnakeCase } from "drizzle-orm/casing";
+
+const locales = ["en", "de"];
+const defaultLocale = "en";
+
+// --- Beispieldefinitionen (vereinfacht) ---
+const userContentType = ContentTypeBuilder.create({
+	apiId: "user",
+	name: "Benutzer",
+	displayField: "email",
+	timestamps: true,
+	softDelete: false,
+	fields: [
+		FieldBuilder.id({ options: { strategy: "uuid" } }),
+		FieldBuilder.text({ apiId: "email", name: "E-Mail" }, { unique: true }),
+	],
+});
+const tagContentType = ContentTypeBuilder.create({
+	apiId: "tag",
+	name: "Tag",
+	displayField: "name",
+	timestamps: false,
+	softDelete: false,
+	fields: [
+		FieldBuilder.id({ options: { strategy: "cuid" } }),
+		FieldBuilder.text({ apiId: "name", name: "Name" }, { unique: true }),
+	],
+});
+const blogPostContentType = ContentTypeBuilder.create({
+	apiId: "blogPost",
+	name: "Blogbeitrag",
+	description: "Ein Artikel.",
+	displayField: "title",
+	icon: "pencil-alt",
+	timestamps: true,
+	softDelete: false,
+	fields: [
+		FieldBuilder.id({ options: { strategy: "uuid" } }),
+		FieldBuilder.text({ apiId: "title", name: "Titel" }, {
+			localized: true,
+			required: true,
+			options: { maxLength: 120 },
+			sortable: true,
+			filterable: true,
+			indexed: true,
+		}),
+		FieldBuilder.slug({ apiId: "slug", name: "URL-Slug" }),
+		FieldBuilder.richText({ apiId: "content", name: "Inhalt" }, {
+			localized: true,
+			required: true,
+		}),
+		FieldBuilder.media({ apiId: "featuredImage", name: "Titelbild" }),
+		FieldBuilder.boolean({ apiId: "isPublished", name: "Veröffentlicht" }, {
+			options: { displayAs: "switch" },
+			defaultValue: false,
+			filterable: true,
+			indexed: true,
+		}),
+		FieldBuilder.date({
+			apiId: "publishedAt",
+			name: "Veröffentlichungsdatum",
+		}, {
+			required: false,
+			options: { variant: "datetime" },
+			sortable: true,
+		}),
+		FieldBuilder.relation({ apiId: "author", name: "Autor" }, {
+			required: true,
+			options: {
+				relatedContentTypeApiId: "user",
+				relationType: "many-to-one",
+				onDelete: "SET NULL",
+			},
+		}),
+		FieldBuilder.relation({ apiId: "tags", name: "Tags" }, {
+			required: false,
+			options: {
+				relatedContentTypeApiId: "tag",
+				relationType: "many-to-many",
+			},
+		}),
+	],
+});
+
+const allContentTypes = [userContentType, tagContentType, blogPostContentType];
+// console.log(JSON.stringify(allContentTypes, null, 2));
+
+
+
+// --- Code generieren ---
+try {
+	// (alias) generateZodSchemaFileContent(definition: ContentTypeDefinition, options: ZodCodeGeneratorOptions): string
+
+	for (const contentType of allContentTypes) {
+		const result = generateZodSchemaFileContent(contentType, {
+			locales,
+			defaultLocale,
+		});
+
+		const fileName = `${_.snakeCase(contentType.apiId)}.schema.ts`;
+		const outputPath = path.join(__dirname, 'generated', 'schemas', fileName);
+		fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+		fs.writeFileSync(outputPath, result, 'utf-8');
+		console.log(`✅ Zod-Schema geschrieben nach: ${outputPath}`);
+	}
+
+} catch (error) {
+	console.error("Fehler bei der Zod-Code-Generierung:", error);
+}
+
+
+
+const allDefinitions = [userContentType, tagContentType, blogPostContentType];
+
+// --- Code für jede Definition generieren und schreiben ---
+const outputBaseDir = path.join(__dirname, 'generated', 'drizzle');
+fs.mkdirSync(outputBaseDir, { recursive: true });
+
+const generatedJoinFiles = new Set<string>(); // Verhindert doppeltes Schreiben
+
+for (const definition of allDefinitions) {
+	try {
+		const result = generateDrizzleSchemaFileContent(definition, allDefinitions);
+		const mainSchemaFileName = `${toSnakeCase(definition.apiId)}.schema.ts`;
+		const mainSchemaPath = path.join(outputBaseDir, mainSchemaFileName);
+
+		console.log(`--- Generierter Code für ${mainSchemaFileName} ---`);
+		console.log(result.mainSchemaContent);
+		fs.writeFileSync(mainSchemaPath, result.mainSchemaContent, 'utf-8');
+		console.log(`✅ Drizzle-Hauptschema geschrieben nach: ${mainSchemaPath}`);
+
+		// Join-Tabellen schreiben (wenn vorhanden)
+		for (const joinSchemaInfo of result.joinSchemaContents) {
+			const joinSchemaPath = path.join(outputBaseDir, joinSchemaInfo.fileName);
+
+			if (!generatedJoinFiles.has(joinSchemaInfo.fileName)) {
+				console.log(`--- Generierter Code für ${joinSchemaInfo.fileName} ---`);
+				console.log(joinSchemaInfo.content);
+				fs.writeFileSync(joinSchemaPath, joinSchemaInfo.content, 'utf-8');
+				console.log(`✅ Drizzle-Join-Schema geschrieben nach: ${joinSchemaPath}`);
+				generatedJoinFiles.add(joinSchemaInfo.fileName); // Markieren als geschrieben
+			} else {
+				console.log(`ℹ️ Drizzle-Join-Schema ${joinSchemaInfo.fileName} wurde bereits von anderer Seite generiert, übersprungen.`);
+			}
+		}
+
+	} catch (error) {
+		console.error(`Fehler bei der Drizzle-Code-Generierung für ${definition.apiId}:`, error);
+	}
+}

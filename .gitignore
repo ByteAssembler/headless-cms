@@ -40,4 +40,6 @@ lerna-debug.log*
 *.sqlite3
 *.db
 
-drizzle/
+./drizzle/
+
+src/generated/

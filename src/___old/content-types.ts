@@ -8,7 +8,7 @@ import {
     type FieldDefinition,
     defineSelectField,
     defineTimestamps
-} from '@/core/content-fields';
+} from '@/old/core/content-fields';
 
 // Definiere die Struktur für eine Content-Typ-Konfiguration
 // (Ersetzt PlaceholderContentTypeConfig aus schema-relations.ts)

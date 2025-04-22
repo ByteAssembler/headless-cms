@@ -7,21 +7,25 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "test": "vitest",
-    "test:watch": "vitest --watch",
-    "generate:schema": "tsx ./src/scripts/generate-schema.ts"
+    "test:watch": "vitest --watch"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",
     "@libsql/client": "^0.15.4",
     "@paralleldrive/cuid2": "^2.2.2",
+    "@trpc/server": "^11.1.0",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.42.0",
     "hono": "^4.7.7",
+    "lodash": "^4.17.21",
     "nanoid": "^5.1.5",
+    "pg": "^8.14.1",
     "zod": "^3.24.3"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.16",
     "@types/node": "^22.14.1",
+    "@types/pg": "^8.11.13",
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.3",
     "vitest": "^3.1.1"

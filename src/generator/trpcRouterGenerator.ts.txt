@@ -1,0 +1,250 @@
+/**
+ * trpcRouterGenerator.ts
+ */
+
+import { z, type ZodTypeAny, type ZodObject, type ZodRawShape, type ZodType } from 'zod';
+import { TRPCError, type AnyRouter, type inferRouterInputs, type inferRouterOutputs } from '@trpc/server';
+import { eq, and, isNull, asc, desc, SQL } from 'drizzle-orm';
+import type { PgTableWithColumns, TableConfig } from 'drizzle-orm/pg-core';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { ContentTypeDefinition, IdField } from './types';
+
+// FEHLERBEHEBUNG 4: Stelle sicher, dass DEIN Zod-Generator (die Objekt-Version!)
+//                   diesen Typ exportiert und der Pfad stimmt.
+import type { GeneratedZodSchemas } from './zodSchemaCodeGenerator';
+
+// FEHLERBEHEBUNG 5: !! PASSE DIESEN PFAD AN DEIN PROJEKT AN !!
+import { publicProcedure, protectedProcedure, t } from './server/trpc';
+
+// =============================================================================
+// Hilfstypen und Funktionen
+// =============================================================================
+
+export interface BaseContext {
+	db: NodePgDatabase<any>;
+	// user?: { id: string; roles: string[] };
+}
+
+function getIdZodType(definition: ContentTypeDefinition): z.ZodString | z.ZodNumber {
+	const idField = definition.fields.find(f => f.fieldType === 'id') as IdField | undefined;
+	if (!idField) throw new Error(`Content type ${definition.apiId} hat kein ID-Feld.`);
+	return idField.options.strategy === 'autoincrement' ? z.number().int().positive() : z.string();
+}
+
+function getSoftDeleteClause(table: PgTableWithColumns<any>, softDelete: boolean): SQL | undefined {
+	if (softDelete && table && typeof (table as any).deletedAt === 'object') {
+		return isNull((table as any).deletedAt);
+	}
+	return undefined;
+}
+
+// =============================================================================
+// Hauptgenerator-Funktion
+// =============================================================================
+
+export interface TrpcRouterGeneratorOptions<
+	TContext extends BaseContext,
+	TTable extends PgTableWithColumns<any>,
+	TGeneratedZodSchemas extends GeneratedZodSchemas<any>
+> {
+	trpcInstance: typeof t;
+	definition: ContentTypeDefinition;
+	schemas: TGeneratedZodSchemas;
+	table: TTable;
+	protectedProcedure?: typeof protectedProcedure | typeof publicProcedure;
+	publicProcedure?: typeof publicProcedure;
+}
+
+export function generateTrpcRouter<
+	TContext extends BaseContext,
+	TTable extends PgTableWithColumns<TableConfig>,
+	TGeneratedZodSchemas extends GeneratedZodSchemas<any>
+>(
+	options: TrpcRouterGeneratorOptions<TContext, TTable, TGeneratedZodSchemas>
+): AnyRouter {
+	const {
+		trpcInstance: t,
+		definition,
+		schemas,
+		table,
+		protectedProcedure: protProc = publicProcedure,
+		publicProcedure: pubProc = publicProcedure
+	} = options;
+
+	const idZodType = getIdZodType(definition);
+	const tableName = definition.apiId;
+
+	const softDeleteWhere = getSoftDeleteClause(table, definition.softDelete);
+
+	// FEHLERBEHEBUNG 6-17: Definiere Input-Schemas korrekt für Inferenz
+	const findManyInputSchema = z.object({
+		limit: z.number().int().min(1).max(100).optional().default(20),
+		offset: z.number().int().min(0).optional().default(0),
+		// TODO: Filterung/Sortierung hinzufügen
+	}).optional().default({});
+	const findOneInputSchema = z.object({ id: idZodType });
+	const updateInputSchema = z.object({ id: idZodType, data: schemas.updateSchema });
+	const deleteInputSchema = z.object({ id: idZodType });
+	// CreateInput wird direkt von schemas.createSchema abgeleitet
+
+	// Leite Typen korrekt von den Schemas ab
+	type FindManyInput = z.infer<typeof findManyInputSchema>;
+	type FindOneInput = z.infer<typeof findOneInputSchema>;
+	type CreateInput = z.infer<typeof schemas.createSchema>; // Direkte Inferenz ist ok
+	type UpdateInput = z.infer<typeof updateInputSchema>;
+	type DeleteInput = z.infer<typeof deleteInputSchema>;
+
+
+	const crudRouter = t.router({
+		findMany: pubProc
+			.input(findManyInputSchema) // Verwende das definierte Schema
+			.output(z.array(schemas.outputSchema))
+			// FEHLERBEHEBUNG 20: Explizite Typen jetzt korrekt
+			.query(async ({ ctx, input }: { ctx: TContext; input: FindManyInput }) => {
+				try {
+					// FEHLERBEHEBUNG 18: Cast table für Drizzle
+					const results = await ctx.db
+						.select()
+						.from(table as any)
+						.where(softDeleteWhere)
+						.limit(input.limit)
+						.offset(input.offset);
+					return results as any;
+				} catch (error) {
+					console.error(`[tRPC ${tableName}.findMany] Error:`, error);
+					throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+				}
+			}),
+
+		findOne: pubProc
+			.input(findOneInputSchema)
+			.output(schemas.outputSchema.nullable())
+			.query(async ({ ctx, input }: { ctx: TContext; input: FindOneInput }) => {
+				try {
+					const result = await ctx.db
+						.select()
+						.from(table as any) // FEHLERBEHEBUNG 19: Cast table für Drizzle
+						.where(
+							and(
+								eq((table as any).id, input.id),
+								softDeleteWhere
+							)
+						)
+						.limit(1);
+					if (result.length === 0) return null;
+					return result[0] as any;
+				} catch (error) {
+					console.error(`[tRPC ${tableName}.findOne] Error:`, error);
+					throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+				}
+			}),
+
+		create: protProc
+			.input(schemas.createSchema)
+			.output(schemas.outputSchema)
+			// FEHLERBEHEBUNG 20: Explizite Typen jetzt korrekt
+			.mutation(async ({ ctx, input }: { ctx: TContext; input: CreateInput }) => {
+				try {
+					// FEHLERBEHEBUNG 18: Cast table für Drizzle
+					const created = await ctx.db
+						.insert(table as any)
+						.values(input as any)
+						.returning();
+					if (created.length === 0) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+					return created[0] as any;
+				} catch (error: any) {
+					console.error(`[tRPC ${tableName}.create] Error:`, error);
+					if (error.code === '23505') throw new TRPCError({ code: 'CONFLICT' });
+					throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+				}
+			}),
+
+		update: protProc
+			.input(updateInputSchema)
+			.output(schemas.outputSchema)
+			.mutation(async ({ ctx, input }: { ctx: TContext; input: UpdateInput }) => {
+				// FEHLERBEHEBUNG 4: Verwende eine Typ-Assertion
+				const dataToUpdate = input.data as Record<string, any>;
+
+				if (definition.timestamps && typeof (table as any).updatedAt === 'object') {
+					dataToUpdate.updatedAt = new Date();
+				}
+				try {
+					const updated = await ctx.db
+						.update(table as any)
+						.set(dataToUpdate) // dataToUpdate ist jetzt sicher als Record<string, any> behandelt
+						.where(
+							and(
+								eq((table as any).id, input.id),
+								softDeleteWhere
+							)
+						)
+						.returning();
+					if (updated.length === 0) {
+						const exists = await ctx.db.select({ id: (table as any).id }).from(table as any).where(eq((table as any).id, input.id)).limit(1);
+						if (exists.length === 0) throw new TRPCError({ code: 'NOT_FOUND' });
+						else throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+					}
+					return updated[0] as any;
+				} catch (error: any) {
+					console.error(`[tRPC ${tableName}.update] Error:`, error);
+					if (error.code === '23505') throw new TRPCError({ code: 'CONFLICT' });
+					if (error instanceof TRPCError) throw error;
+					throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+				}
+			}),
+
+		delete: protProc
+			.input(deleteInputSchema)
+			.output(z.object({ id: idZodType }))
+			// FEHLERBEHEBUNG 22: Explizite Typen jetzt korrekt
+			.mutation(async ({ ctx, input }: { ctx: TContext; input: DeleteInput }) => {
+				try {
+					let deletedId: string | number | undefined = undefined;
+					const idColumn = (table as any).id;
+
+					if (definition.softDelete) {
+						const dataToSet: Record<string, any> = { deletedAt: new Date() };
+						if (definition.timestamps && typeof (table as any).updatedAt === 'object') {
+							dataToSet.updatedAt = new Date();
+						}
+						// FEHLERBEHEBUNG 18: Cast table für Drizzle
+						const result = await ctx.db
+							.update(table as any)
+							.set(dataToSet)
+							.where(
+								and(
+									eq(idColumn, input.id),
+									// Verwende die Hilfsfunktion hier, um sicherzustellen, dass auf die richtige Spalte zugegriffen wird
+									getSoftDeleteClause(table, true) ?? undefined // SQL oder undefined
+								)
+							)
+							.returning({ id: idColumn });
+						if (result.length > 0) deletedId = result[0].id;
+					} else {
+						// FEHLERBEHEBUNG 18: Cast table für Drizzle
+						const result = await ctx.db
+							.delete(table as any)
+							.where(eq(idColumn, input.id))
+							.returning({ id: idColumn });
+						if (result.length > 0) deletedId = result[0].id;
+					}
+
+					if (deletedId === undefined) {
+						// FEHLERBEHEBUNG 26: Cast table für Drizzle
+						const exists = await ctx.db.select({ id: idColumn }).from(table as any).where(eq(idColumn, input.id)).limit(1);
+						if (exists.length === 0) throw new TRPCError({ code: 'NOT_FOUND' });
+						else throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+					}
+					return { id: deletedId };
+				} catch (error: any) {
+					console.error(`[tRPC ${tableName}.delete] Error:`, error);
+					if (error.code === '23503') throw new TRPCError({ code: 'CONFLICT' });
+					if (error instanceof TRPCError) throw error;
+					throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+				}
+			}),
+	});
+
+	return crudRouter;
+}

@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { allContentTypeConfigs } from '@/content-types';
-import { type FieldDefinition } from '@/core/content-fields';
+import { allContentTypeConfigs } from '@/old/content-types';
+import { type FieldDefinition } from '@/old/core/content-fields';
 
 // --- Configuration ---
 const __filename = fileURLToPath(import.meta.url);

@@ -198,6 +198,7 @@ export function generateZodSchemaFileContent(
 
 		const isRequired = field.required;
 		const hasDefault = field.defaultValue !== undefined; // Beinhaltet null nicht explizit
+		const fieldApiId = field.fieldType === 'relation' ? `${field.apiId}Id` : field.apiId;
 
 		// --- Lokalisierung ---
 		if (field.localized && locales.length > 0) {
@@ -273,13 +274,13 @@ export function generateZodSchemaFileContent(
 
 		// --- Shape-Strings befüllen ---
 		if (finalCreateString) {
-			createShapeFields.push(`  ${field.apiId}: ${finalCreateString}`);
+			createShapeFields.push(`  ${fieldApiId}: ${finalCreateString}`);
 		}
 		if (finalUpdateString) {
-			updateShapeFields.push(`  ${field.apiId}: ${finalUpdateString}`);
+			updateShapeFields.push(`  ${fieldApiId}: ${finalUpdateString}`);
 		}
 		if (finalOutputString) {
-			outputShapeFields.push(`  ${field.apiId}: ${finalOutputString}`);
+			outputShapeFields.push(`  ${fieldApiId}: ${finalOutputString}`);
 		}
 	}
 

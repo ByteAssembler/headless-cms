@@ -237,7 +237,6 @@ export const FieldBuilder = {
 			base.defaultValue = false;
 		}
 
-
 		return {
 			...base,
 			...requiredOptions,

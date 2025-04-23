@@ -65,11 +65,12 @@ function formatDefaultValueForCode(value: any): string {
  * Erzeugt den String für den Basis-Zod-Typ eines Feldes, bevor
  * Lokalisierung oder Optionalität/Defaults angewendet werden.
  */
-function getBaseZodTypeString(field: FieldDefinition): string {
+function getBaseZodTypeString(field: FieldDefinition, allDefinitions: ContentTypeDefinition[]): string {
 	switch (field.fieldType) {
 		case 'id':
 			const idStrategy = (field as IdField).options.strategy;
-			return idStrategy === 'autoincrement' ? `z.number().int().positive()` : `z.string()`; // UUIDs/CUIDs sind strings
+			// CUIDs are strings, UUIDs are strings, Autoincrement are numbers
+			return idStrategy === 'autoincrement' ? `z.number().int().positive()` : `z.string()`;
 
 		case 'text':
 			let chain = 'z.string()';
@@ -126,19 +127,38 @@ function getBaseZodTypeString(field: FieldDefinition): string {
 			// Hier der Einfachheit halber weggelassen, da es den Code stark aufbläht
 			return dateChain;
 
-		case 'relation':
+		case 'relation': { // Use block scope for variables
 			const relField = field as RelationField;
-			// Annahme: IDs sind strings oder numbers. Muss ggf. angepasst werden.
-			const idTypeCode = 'z.union([z.string(), z.number()])';
-			if (relField.options.relationType === 'one-to-many' || relField.options.relationType === 'many-to-many') {
-				return `z.array(${idTypeCode})`;
-			} else {
-				return idTypeCode;
+			const relatedContentType = allDefinitions.find(
+				(def) => def.apiId === relField.options.relatedContentTypeApiId
+			);
+			if (!relatedContentType) {
+				console.error(`[Zod Generator Error] Related content type \"${relField.options.relatedContentTypeApiId}\" not found for relation field \"${field.apiId}\". Falling back to z.any().`);
+				return 'z.any()'; // Fallback or throw error
+			}
+			const relatedIdField = relatedContentType.fields.find(f => f.fieldType === 'id') as IdField | undefined;
+			if (!relatedIdField) {
+				console.error(`[Zod Generator Error] Related content type \"${relatedContentType.apiId}\" has no ID field defined. Falling back to z.any().`);
+				return 'z.any()'; // Fallback or throw error
 			}
 
+			// Determine the specific Zod type based on the related ID strategy
+			const idTypeCode = relatedIdField.options.strategy === 'autoincrement'
+				? `z.number().int().positive()`
+				: `z.string()`; // UUIDs and CUIDs are strings
+
+			if (relField.options.relationType === 'one-to-many' || relField.options.relationType === 'many-to-many') {
+				return `z.array(${idTypeCode})`;
+			} else { // one-to-one, many-to-one
+				return idTypeCode;
+			}
+		}
+
 		case 'media':
-			// Annahme: Referenz-ID (string/number) oder null
-			return `z.union([z.string(), z.number()]).nullable()`;
+			// Annahme: Referenz-ID (string/number) oder null. Hier könnte man auch spezifischer werden, wenn das Media-Management-System nur einen ID-Typ verwendet.
+			// Fürs Erste belassen wir es bei der Union, da Media noch nicht vollständig spezifiziert ist.
+			// TODO: Anpassen, wenn Media-ID-Typ bekannt ist (z.B. immer string oder immer number)
+			return `z.string().nullable()`;
 
 		case 'json':
 			return 'z.any()'; // Oder z.record(z.string(), z.any()), etc.
@@ -163,11 +183,13 @@ export interface ZodCodeGeneratorOptions {
 /**
  * Generiert den TypeScript-Code-Inhalt für eine Zod-Schema-Datei.
  * @param definition - Die Definition des Content Types.
+ * @param allDefinitions - Eine Liste aller ContentTypeDefinitionen im System (wird für Relationen benötigt).
  * @param options - Konfiguration für die Code-Generierung (Locales).
  * @returns Ein String, der den Inhalt der .ts-Datei darstellt.
  */
 export function generateZodSchemaFileContent(
 	definition: ContentTypeDefinition,
+	allDefinitions: ContentTypeDefinition[], // Hinzugefügt
 	options: ZodCodeGeneratorOptions
 ): string {
 	const { locales, defaultLocale } = options;
@@ -191,19 +213,22 @@ export function generateZodSchemaFileContent(
 	for (const field of definition.fields) {
 		if (field.fieldType === 'id') continue; // ID wird separat im Output behandelt
 
-		let baseZodString = getBaseZodTypeString(field);
+		let baseZodString = getBaseZodTypeString(field, allDefinitions); // Pass allDefinitions
 		let finalCreateString: string | null = null;
 		let finalUpdateString: string | null = null;
 		let finalOutputString: string | null = null;
 
 		const isRequired = field.required;
 		const hasDefault = field.defaultValue !== undefined; // Beinhaltet null nicht explizit
-		const fieldApiId = field.fieldType === 'relation' ? `${field.apiId}Id` : field.apiId;
+		// Adjust fieldApiId for relations to include 'Id' suffix for clarity in Zod schema
+		const fieldApiId = field.fieldType === 'relation' && (field.options.relationType === 'many-to-one' || field.options.relationType === 'one-to-one')
+			? `${field.apiId}Id` // e.g., author -> authorId
+			: field.apiId; // e.g., tags -> tags (for array), title -> title
 
 		// --- Lokalisierung ---
 		if (field.localized && locales.length > 0) {
 			const localeShapeFields: string[] = [];
-			const baseLocaleTypeString = getBaseZodTypeString(field); // Typ ohne Optionalität
+			const baseLocaleTypeString = getBaseZodTypeString(field, allDefinitions); // Pass allDefinitions
 
 			for (const locale of locales) {
 				let localeTypeString = baseLocaleTypeString;
@@ -287,7 +312,7 @@ export function generateZodSchemaFileContent(
 	// --- ID, Timestamps und SoftDelete zum Output hinzufügen ---
 	const idField = definition.fields.find(f => f.fieldType === 'id') as IdField | undefined;
 	if (idField) {
-		outputShapeFields.unshift(`  ${idField.apiId}: ${getBaseZodTypeString(idField)}`); // ID zuerst
+		outputShapeFields.unshift(`  ${idField.apiId}: ${getBaseZodTypeString(idField, allDefinitions)}`); // ID zuerst, Pass allDefinitions
 	}
 	if (timestamps) {
 		outputShapeFields.push(`  createdAt: z.date()`);
@@ -382,8 +407,14 @@ const blogPostContentType = ContentTypeBuilder.create({
 
 // --- Code generieren ---
 try {
+	// Stellen Sie sicher, dass 'allDefinitions' verfügbar ist
+	if (typeof allDefinitions === 'undefined') {
+		throw new Error("Variable 'allDefinitions' ist nicht definiert. Sie wird für die Zod-Generierung benötigt.");
+	}
+
 	const generatedCode = generateZodSchemaFileContent(
 		blogPostContentType,
+		allDefinitions, // Pass allDefinitions
 		{ locales, defaultLocale }
 	);
 

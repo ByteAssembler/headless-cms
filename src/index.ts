@@ -116,7 +116,11 @@ console.log(`✅ Drizzle Schema Code Generierung abgeschlossen.`);
 console.log('\n--- 3. Generiere Zod Schema Code ---');
 for (const definition of allDefinitions) {
 	try {
-		const generatedCode = generateZodSchemaFileContent(definition, zodGenOptions);
+		const generatedCode = generateZodSchemaFileContent(
+			definition,
+			allDefinitions,
+			zodGenOptions,
+		);
 		const outputFileName = `${_.camelCase(definition.apiId)}.schema.ts`;
 		const outputPath = path.join(zodOutputDir, outputFileName);
 		console.log(`   Generiere Code für ${outputFileName}...`);

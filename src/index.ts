@@ -78,7 +78,7 @@ const blogPostContentType = ContentTypeBuilder.create({
 	apiId: "blogPost", name: "Blogbeitrag", description: "Ein Artikel.", displayField: "title", icon: "pencil-alt", timestamps: true, softDelete: false,
 	fields: [FieldBuilder.id({ options: { strategy: "uuid" } }), FieldBuilder.text({ apiId: "title", name: "Titel" }, { localized: true, required: true, options: { maxLength: 120 }, sortable: true, filterable: true, indexed: true, }), FieldBuilder.slug({ apiId: "slug", name: "URL-Slug" }), FieldBuilder.richText({ apiId: "content", name: "Inhalt" }, { localized: true, required: true, }), FieldBuilder.media({ apiId: "featuredImage", name: "Titelbild" }), FieldBuilder.boolean({ apiId: "isPublished", name: "Veröffentlicht" }, { options: { displayAs: "switch" }, defaultValue: false, filterable: true, indexed: true, }), FieldBuilder.date({ apiId: "publishedAt", name: "Veröffentlichungsdatum", }, { required: false, options: { variant: "datetime" }, sortable: true, }), FieldBuilder.relation({ apiId: "author", name: "Autor" }, { required: true, options: { relatedContentTypeApiId: "user", relationType: "many-to-one", onDelete: "SET NULL", }, }), FieldBuilder.relation({ apiId: "tags", name: "Tags" }, { required: false, options: { relatedContentTypeApiId: "tag", relationType: "many-to-many", }, }),],
 });
-const allDefinitions = [userContentType, tagContentType, blogPostContentType];
+export const allDefinitions = [userContentType, tagContentType, blogPostContentType];
 console.log(`✅ ${allDefinitions.length} Content Types definiert.`);
 
 // =============================================================================
@@ -114,6 +114,8 @@ console.log(`✅ Drizzle Schema Code Generierung abgeschlossen.`);
 // SCHRITT 3: Zod Schema Code generieren (Build-Schritt)
 // =============================================================================
 console.log('\n--- 3. Generiere Zod Schema Code ---');
+const generatedZodFiles: string[] = []; // Store generated filenames
+
 for (const definition of allDefinitions) {
 	try {
 		const generatedCode = generateZodSchemaFileContent(
@@ -126,10 +128,29 @@ for (const definition of allDefinitions) {
 		console.log(`   Generiere Code für ${outputFileName}...`);
 		fs.writeFileSync(outputPath, generatedCode, 'utf-8'); // Schreibe Datei
 		console.log(`   -> ${outputPath}`);
+		generatedZodFiles.push(outputFileName); // Add filename to list
 	} catch (error) {
 		console.error(`Fehler bei Zod-Code-Generierung für ${definition.apiId}:`, error);
 	}
 }
+
+// --- Generiere Zod Index-Datei ---
+if (generatedZodFiles.length > 0) {
+	const indexFileContent = `/**
+ * GENERATED INDEX FILE - DO NOT EDIT MANUALLY!
+ *
+ * Re-exports all generated Zod schemas.
+ */
+
+${generatedZodFiles.map(fileName => `export * from './${fileName.replace('.ts', '')}';`).join('\n')}
+`;
+	const indexFilePath = path.join(zodOutputDir, 'index.ts');
+	console.log(`   Generiere Zod Index-Datei (index.ts)...`);
+	fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
+	console.log(`   -> ${indexFilePath}`);
+}
+// --- Ende Zod Index-Datei Generierung ---
+
 console.log(`✅ Zod Schema Code Generierung abgeschlossen.`);
 
 

@@ -211,7 +211,13 @@ export function generateZodSchemaFileContent(
 
 	// --- Felder verarbeiten ---
 	for (const field of definition.fields) {
-		if (field.fieldType === 'id') continue; // ID wird separat im Output behandelt
+		// ID wird separat im Output behandelt, ABER für Create benötigt, wenn CUID
+		if (field.fieldType === 'id') {
+			if ((field as IdField).options.strategy === 'cuid') {
+				createShapeFields.push(`  ${field.apiId}: ${getBaseZodTypeString(field, allDefinitions)}`);
+			}
+			continue;
+		}
 
 		let baseZodString = getBaseZodTypeString(field, allDefinitions); // Pass allDefinitions
 		let finalCreateString: string | null = null;

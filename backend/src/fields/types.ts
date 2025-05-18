@@ -287,7 +287,7 @@ export interface ContentTypeDefinition {
 	displayField: string; // Muss auf ein Feld in `fields` verweisen (oft ein 'text'-Feld)
 
 	/** Optionaler Name oder SVG-String eines Icons für die Darstellung im CMS-Menü. */
-	icon?: string;
+	icon?: "IconName" | string; // SVG-String oder Icon-Name (z.B. 'fa-solid fa-file')
 
 	// --- Verhalten auf Typ-Ebene ---
 

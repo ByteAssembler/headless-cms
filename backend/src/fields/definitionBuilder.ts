@@ -22,7 +22,7 @@ import type {
 	RelationField,
 	RichTextField,
 	TextField,
-} from './types'; // Annahme: Typen sind in types.ts
+} from "./types.ts"; // Annahme: Typen sind in types.ts
 
 // =============================================================================
 // Interne Hilfstypen für Builder-Optionen

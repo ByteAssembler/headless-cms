@@ -19,7 +19,6 @@
     "skipDefaultLibCheck": true,
     "resolveJsonModule": true,
     "strict": true,
-    "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": [
       "node"

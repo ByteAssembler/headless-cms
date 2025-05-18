@@ -2,7 +2,7 @@
   "name": "headless-cms",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "bun run --watch src/index.ts --ignore src/generated/**",
     "db:kit": "drizzle-kit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",

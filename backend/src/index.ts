@@ -11,9 +11,14 @@
  * Der Server importiert dann die kompilierten Artefakte.
  */
 
+import { config } from 'dotenv';
+import * as path from 'node:path'; // path needs to be imported before config
+config({ path: path.join(import.meta.dirname, '../.env') });
+
 import * as fs from 'node:fs';
-import * as path from 'node:path';
+// import * as path from 'node:path'; // Already imported
 import _ from 'lodash';
+import * as url from 'node:url'; // Import the 'url' module
 
 // 1. Definitionen & Builder importieren
 import { ContentTypeBuilder, FieldBuilder } from './fields/definitionBuilder'; // ANPASSEN
@@ -28,15 +33,17 @@ import type { ZodCodeGeneratorOptions } from './generator/zodSchemaCodeGenerator
 // 4. tRPC Code Generator und Setup importieren
 import { generateTrpcRouterFileContent } from './generator/trpcRouterCodeGenerator'; // ANPASSEN
 import type { TrpcCodeGeneratorOptions } from './generator/trpcRouterCodeGenerator'; // ANPASSEN
-import { initTRPC } from '@trpc/server';
-import * as trpcRouters from './generated/trpc'; // Import generated tRPC routers
 import { createHTTPServer } from '@trpc/server/adapters/standalone';
-import { createContext } from './server/trpc'; // Import createContext
+import { createContext, t as trpcInstance } from './server/trpc'; // Import t as trpcInstance to avoid conflict
+import { connectDb } from './db'; // Import connectDb
 
-// Importiere t nur für den letzten Schritt (App Router Assembly Simulation)
-import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
-import { connectDb } from './db';
+// Definiere den AppRouter Typ basierend auf einer (ggf. leeren) Router-Definition,
+// um sicherzustellen, dass er nicht 'undefined' ist.
+// const _appRouterPlaceholder = trpcInstance.router({}); // Platzhalter für die Typinferenz // VERALTET
+// export type AppRouter = typeof _appRouterPlaceholder; // VERALTET
+
+// Die tatsächliche Router-Instanz wird später in main() zugewiesen.
+// let appRouterInstance: AppRouter; // VERALTET
 
 // =============================================================================
 // Konfiguration für Generatoren (Pfade relativ zum Output-Verzeichnis)
@@ -47,11 +54,23 @@ const zodOutputDir = path.join(outputBaseDir, 'zod');
 const trpcOutputDir = path.join(outputBaseDir, 'trpc');
 
 // KORREKTUR: Erstelle Output-Verzeichnisse
-fs.mkdirSync(drizzleOutputDir, { recursive: true });
-fs.mkdirSync(zodOutputDir, { recursive: true });
-fs.mkdirSync(trpcOutputDir, { recursive: true });
-console.log(`✅ Output-Verzeichnisse sichergestellt: ${outputBaseDir}`);
-
+// Diese Verzeichnisse sollten idealerweise einmalig beim Setup erstellt werden
+// oder Teil eines dedizierten Build-Skripts sein.
+// Für den Moment lassen wir sie hier, aber bedenke, dass dies bei jedem
+// Import von index.ts ausgeführt wird, wenn es nicht in einer Funktion gekapselt ist.
+function ensureOutputDirectories() {
+	if (!fs.existsSync(drizzleOutputDir)) {
+		fs.mkdirSync(drizzleOutputDir, { recursive: true });
+	}
+	if (!fs.existsSync(zodOutputDir)) {
+		fs.mkdirSync(zodOutputDir, { recursive: true });
+	}
+	if (!fs.existsSync(trpcOutputDir)) {
+		fs.mkdirSync(trpcOutputDir, { recursive: true });
+	}
+	console.log(`✅ Output-Verzeichnisse sichergestellt: ${outputBaseDir}`);
+}
+ensureOutputDirectories(); // Call it once
 
 const zodGenOptions: ZodCodeGeneratorOptions = {
 	locales: ['en', 'de'], // Beispiel-Locales
@@ -166,43 +185,46 @@ export const allDefinitions = [
 	tagContentType,
 	blogPostContentType,
 ];
-console.log(`✅ ${allDefinitions.length} Content Types definiert.`);
+// console.log(`✅ ${allDefinitions.length} Content Types definiert.`); // Optional: Kann in runCodeGeneration
 
+function runCodeGeneration() {
+	console.log('Starting code generation...');
+	console.log(`✅ ${allDefinitions.length} Content Types definiert.`); // Moved here
 
-// =============================================================================
-// SCHRITT 2: Drizzle Schema Code generieren (Build-Schritt)
-// =============================================================================
-console.log('\n--- 2. Generiere Drizzle Schema Code ---');
-const generatedDrizzleFiles: string[] = []; // Store generated filenames
-const generatedJoinFiles = new Set<string>();
-for (const definition of allDefinitions) {
-	try {
-		const result = generateDrizzleSchemaFileContent(definition, allDefinitions);
-		const mainSchemaFileName = `${_.snakeCase(definition.apiId)}.schema.ts`;
-		const mainSchemaPath = path.join(drizzleOutputDir, mainSchemaFileName);
-		console.log(`   Generiere Code für ${mainSchemaFileName}...`);
-		fs.writeFileSync(mainSchemaPath, result.mainSchemaContent, 'utf-8'); // Schreibe Datei
-		console.log(`   -> ${mainSchemaPath}`);
-		generatedDrizzleFiles.push(mainSchemaFileName); // Add filename to list
+	// =============================================================================
+	// SCHRITT 2: Drizzle Schema Code generieren (Build-Schritt)
+	// =============================================================================
+	console.log('\n--- 2. Generiere Drizzle Schema Code ---');
+	const generatedDrizzleFiles: string[] = []; // Store generated filenames
+	const generatedJoinFiles = new Set<string>();
+	for (const definition of allDefinitions) {
+		try {
+			const result = generateDrizzleSchemaFileContent(definition, allDefinitions);
+			const mainSchemaFileName = `${_.snakeCase(definition.apiId)}.schema.ts`;
+			const mainSchemaPath = path.join(drizzleOutputDir, mainSchemaFileName);
+			console.log(`   Generiere Code für ${mainSchemaFileName}...`);
+			fs.writeFileSync(mainSchemaPath, result.mainSchemaContent, 'utf-8'); // Schreibe Datei
+			console.log(`   -> ${mainSchemaPath}`);
+			generatedDrizzleFiles.push(mainSchemaFileName); // Add filename to list
 
-		for (const joinSchemaInfo of result.joinSchemaContents) {
-			const joinSchemaPath = path.join(drizzleOutputDir, joinSchemaInfo.fileName);
-			if (!generatedJoinFiles.has(joinSchemaInfo.fileName)) {
-				console.log(`   Generiere Code für ${joinSchemaInfo.fileName}...`);
-				fs.writeFileSync(joinSchemaPath, joinSchemaInfo.content, 'utf-8'); // Schreibe Datei
-				console.log(`   -> ${joinSchemaPath}`);
-				generatedDrizzleFiles.push(joinSchemaInfo.fileName); // Add join table filename
-				generatedJoinFiles.add(joinSchemaInfo.fileName);
+			for (const joinSchemaInfo of result.joinSchemaContents) {
+				const joinSchemaPath = path.join(drizzleOutputDir, joinSchemaInfo.fileName);
+				if (!generatedJoinFiles.has(joinSchemaInfo.fileName)) {
+					console.log(`   Generiere Code für ${joinSchemaInfo.fileName}...`);
+					fs.writeFileSync(joinSchemaPath, joinSchemaInfo.content, 'utf-8'); // Schreibe Datei
+					console.log(`   -> ${joinSchemaPath}`);
+					generatedDrizzleFiles.push(joinSchemaInfo.fileName); // Add join table filename
+					generatedJoinFiles.add(joinSchemaInfo.fileName);
+				}
 			}
+		} catch (error) {
+			console.error(`Fehler bei Drizzle-Generierung für ${definition.apiId}:`, error);
 		}
-	} catch (error) {
-		console.error(`Fehler bei Drizzle-Generierung für ${definition.apiId}:`, error);
 	}
-}
 
-// --- Generiere Drizzle Index-Datei ---
-if (generatedDrizzleFiles.length > 0) {
-	const indexFileContent = `/**
+	// --- Generiere Drizzle Index-Datei ---
+	if (generatedDrizzleFiles.length > 0) {
+		const indexFileContent = `/**
  * GENERATED INDEX FILE - DO NOT EDIT MANUALLY!
  *
  * Re-exports all generated Drizzle schemas.
@@ -210,42 +232,42 @@ if (generatedDrizzleFiles.length > 0) {
 
 ${generatedDrizzleFiles.map(fileName => `export * as ${_.camelCase(fileName.replace('.schema.ts', ''))} from './${fileName.replace('.ts', '')}';`).join('\n')}
 `;
-	const indexFilePath = path.join(drizzleOutputDir, 'index.ts');
-	console.log(`   Generiere Drizzle Index-Datei (index.ts)...`);
-	fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
-	console.log(`   -> ${indexFilePath}`);
-}
-// --- Ende Drizzle Index-Datei Generierung ---
-
-console.log(`✅ Drizzle Schema Code Generierung abgeschlossen.`);
-
-// =============================================================================
-// SCHRITT 3: Zod Schema Code generieren (Build-Schritt)
-// =============================================================================
-console.log('\n--- 3. Generiere Zod Schema Code ---');
-const generatedZodFiles: string[] = []; // Store generated filenames
-
-for (const definition of allDefinitions) {
-	try {
-		const generatedCode = generateZodSchemaFileContent(
-			definition,
-			allDefinitions,
-			zodGenOptions,
-		);
-		const outputFileName = `${_.camelCase(definition.apiId)}.schema.ts`;
-		const outputPath = path.join(zodOutputDir, outputFileName);
-		console.log(`   Generiere Code für ${outputFileName}...`);
-		fs.writeFileSync(outputPath, generatedCode, 'utf-8'); // Schreibe Datei
-		console.log(`   -> ${outputPath}`);
-		generatedZodFiles.push(outputFileName); // Add filename to list
-	} catch (error) {
-		console.error(`Fehler bei Zod-Code-Generierung für ${definition.apiId}:`, error);
+		const indexFilePath = path.join(drizzleOutputDir, 'index.ts');
+		console.log(`   Generiere Drizzle Index-Datei (index.ts)...`);
+		fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
+		console.log(`   -> ${indexFilePath}`);
 	}
-}
+	// --- Ende Drizzle Index-Datei Generierung ---
 
-// --- Generiere Zod Index-Datei ---
-if (generatedZodFiles.length > 0) {
-	const indexFileContent = `/**
+	console.log(`✅ Drizzle Schema Code Generierung abgeschlossen.`);
+
+	// =============================================================================
+	// SCHRITT 3: Zod Schema Code generieren (Build-Schritt)
+	// =============================================================================
+	console.log('\n--- 3. Generiere Zod Schema Code ---');
+	const generatedZodFiles: string[] = []; // Store generated filenames
+
+	for (const definition of allDefinitions) {
+		try {
+			const generatedCode = generateZodSchemaFileContent(
+				definition,
+				allDefinitions,
+				zodGenOptions,
+			);
+			const outputFileName = `${_.camelCase(definition.apiId)}.schema.ts`;
+			const outputPath = path.join(zodOutputDir, outputFileName);
+			console.log(`   Generiere Code für ${outputFileName}...`);
+			fs.writeFileSync(outputPath, generatedCode, 'utf-8'); // Schreibe Datei
+			console.log(`   -> ${outputPath}`);
+			generatedZodFiles.push(outputFileName); // Add filename to list
+		} catch (error) {
+			console.error(`Fehler bei Zod-Code-Generierung für ${definition.apiId}:`, error);
+		}
+	}
+
+	// --- Generiere Zod Index-Datei ---
+	if (generatedZodFiles.length > 0) {
+		const indexFileContent = `/**
  * GENERATED INDEX FILE - DO NOT EDIT MANUALLY!
  *
  * Re-exports all generated Zod schemas.
@@ -253,93 +275,155 @@ if (generatedZodFiles.length > 0) {
 
 ${generatedZodFiles.map(fileName => `export * as ${_.camelCase(fileName.replace('.schema.ts', ''))} from './${fileName.replace('.ts', '')}';`).join('\n')}
 `;
-	const indexFilePath = path.join(zodOutputDir, 'index.ts');
-	console.log(`   Generiere Zod Index-Datei (index.ts)...`);
-	fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
-	console.log(`   -> ${indexFilePath}`);
-}
-// --- Ende Zod Index-Datei Generierung ---
-
-console.log(`✅ Zod Schema Code Generierung abgeschlossen.`);
-
-
-// =============================================================================
-// SCHRITT 4: tRPC Router Code generieren (Build-Schritt)
-// =============================================================================
-console.log('\n--- 4. Generiere tRPC Router Code ---');
-const generatedTrpcFiles: string[] = []; // Store generated filenames
-for (const definition of allDefinitions) {
-	try {
-		const generatedCode = generateTrpcRouterFileContent(definition, trpcGenOptions);
-		const outputFileName = `${_.camelCase(definition.apiId)}.router.ts`;
-		const outputPath = path.join(trpcOutputDir, outputFileName);
-		console.log(`   Generiere Code für ${outputFileName}...`);
-		fs.writeFileSync(outputPath, generatedCode, 'utf-8'); // Schreibe Datei
-		console.log(`   -> ${outputPath}`);
-		generatedTrpcFiles.push(outputFileName); // Add filename to list
-	} catch (error) {
-		console.error(`Fehler bei tRPC Code-Generierung für ${definition.apiId}:`, error);
+		const indexFilePath = path.join(zodOutputDir, 'index.ts');
+		console.log(`   Generiere Zod Index-Datei (index.ts)...`);
+		fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
+		console.log(`   -> ${indexFilePath}`);
 	}
-}
+	// --- Ende Zod Index-Datei Generierung ---
 
-// --- Generiere tRPC Index-Datei ---
-if (generatedTrpcFiles.length > 0) {
-	const indexFileContent = `/**
- * GENERATED INDEX FILE - DO NOT EDIT MANUALLY!
+	console.log(`✅ Zod Schema Code Generierung abgeschlossen.`);
+
+
+	// =============================================================================
+	// SCHRITT 4: tRPC Router Code generieren (Build-Schritt)
+	// =============================================================================
+	console.log('\n--- 4. Generiere tRPC Router Code ---');
+	const generatedTrpcFiles: string[] = []; // Store generated filenames
+	for (const definition of allDefinitions) {
+		try {
+			const generatedCode = generateTrpcRouterFileContent(definition, trpcGenOptions);
+			const outputFileName = `${_.camelCase(definition.apiId)}.router.ts`;
+			const outputPath = path.join(trpcOutputDir, outputFileName);
+			console.log(`   Generiere Code für ${outputFileName}...`);
+			fs.writeFileSync(outputPath, generatedCode, 'utf-8'); // Schreibe Datei
+			console.log(`   -> ${outputPath}`);
+			generatedTrpcFiles.push(outputFileName); // Add filename to list
+		} catch (error) {
+			console.error(`Fehler bei tRPC Code-Generierung für ${definition.apiId}:`, error);
+		}
+	}
+
+	// --- Generiere tRPC Index-Datei ---
+	if (generatedTrpcFiles.length > 0) {
+		// Dynamische Generierung der Index-Datei mit ES Modul Syntax
+		const routerFiles = fs.readdirSync(trpcOutputDir)
+			.filter(file => file.endsWith('.router.ts') && file !== 'index.ts');
+
+		const importStatements = routerFiles.map(file => {
+			const routerVariableName = _.camelCase(file.replace('.router.ts', '')); // e.g., user
+			const routerExportNameInFile = `${routerVariableName}Router`; // e.g., userRouter, as generated by generateTrpcRouterFileContent
+			// Import from .js as it will be at runtime after compilation
+			return `import { ${routerExportNameInFile} } from './${file.replace('.ts', '.js')}';`;
+		}).join('\n');
+
+		const routerProperties = routerFiles.map(file => {
+			const routerKeyName = _.camelCase(file.replace('.router.ts', '')); // e.g., user
+			const routerExportNameInFile = `${routerKeyName}Router`; // e.g., userRouter
+			return `  ${routerKeyName}: ${routerExportNameInFile},`;
+		}).join('\n');
+
+		const indexFileContent = `/**
+ * GENERATED ES MODULE INDEX FILE - DO NOT EDIT MANUALLY!
  *
- * Re-exports all generated tRPC routers.
+ * Exports all generated tRPC routers from this directory using ES module syntax.
  */
+${importStatements}
 
-${generatedTrpcFiles.map(fileName => `export * as ${_.camelCase(fileName.replace('.router.ts', ''))} from './${fileName.replace('.ts', '')}';`).join('\n')}
+const allRouters = {
+${routerProperties}
+};
+
+export default allRouters;
 `;
-	const indexFilePath = path.join(trpcOutputDir, 'index.ts');
-	console.log(`   Generiere tRPC Index-Datei (index.ts)...`);
-	fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
-	console.log(`   -> ${indexFilePath}`);
-}
-// --- Ende tRPC Index-Datei Generierung ---
+		const indexFilePath = path.join(trpcOutputDir, 'index.ts');
+		console.log(`   Generiere ES Module tRPC Index-Datei (index.ts)...`);
+		fs.writeFileSync(indexFilePath, indexFileContent.trim() + '\n', 'utf-8');
+		console.log(`   -> ${indexFilePath}`);
+	}
+	// --- Ende tRPC Index-Datei Generierung ---
 
-console.log(`✅ tRPC Router Code Generierung abgeschlossen.`);
+	console.log(`✅ tRPC Router Code Generierung abgeschlossen.`);
+	console.log('Code generation finished.');
 
+	// NEU: Generiere die Haupt-Server-Datei
+	console.log('\n--- Generiere Haupt-Server-Datei (src/generated/server.ts) ---');
+	const generatedServerContent = `
+// File: src/generated/server.ts
+// GENERATED FILE - DO NOT EDIT MANUALLY!
 
-// =============================================================================
-// SCHRITT 5: Build-Prozess abschließen
-// =============================================================================
-console.log('\n--- 5. Build-Prozess Ende ---');
-console.log('   Nächste Schritte wären:');
-console.log('   1. Alle generierten *.ts Dateien mit `tsc` kompilieren.');
-console.log('   2. Drizzle Migrationen mit `drizzle-kit generate:pg` (oder ähnlich) erstellen.');
-console.log('   3. Drizzle Migrationen mit `drizzle-kit push:pg` (oder DB-Client) anwenden.');
+import { createHTTPServer } from '@trpc/server/adapters/standalone';
+import { createContext, t as trpcInstance } from '../server/trpc';
+import { connectDb } from '../db';
+import * as allRoutersMap from './trpc/index';
 
-// Initialize tRPC
-const t = initTRPC.context<typeof createContext>().create();
-const appRouter = t.router({
-	user: trpcRouters.user.userRouter,
-	tag: trpcRouters.tag.tagRouter,
-	blogPost: trpcRouters.blogPost.blogPostRouter,
-	// Add other routers here
-});
+const appRouter = trpcInstance.router(allRoutersMap.default);
 
 export type AppRouter = typeof appRouter;
 
-async function startServer() {
-	await connectDb();
+export async function startServer(port: number = 4000) {
+  await connectDb();
 
-	const t = initTRPC.context<typeof createContext>().create();
-	const appRouter = t.router({
-		user: trpcRouters.user.userRouter,
-		tag: trpcRouters.tag.tagRouter,
-		blogPost: trpcRouters.blogPost.blogPostRouter,
-		// Add other routers here
-	});
+  const httpServer = createHTTPServer({
+    router: appRouter,
+    createContext,
+  });
 
-	const httpServer = createHTTPServer({
-		router: appRouter,
-		createContext, // createContext might need to be async now
-	});
+  httpServer.listen(port, () => {
+    console.log(\`🚀 tRPC server (generiert) läuft auf http://localhost:\${port}\`);
+  });
+}
+`;
+	const generatedServerPath = path.join(outputBaseDir, 'server.ts');
+	const newContentData = generatedServerContent.trim() + '\n';
 
-	httpServer.listen(4000);
-	console.log('tRPC server läuft auf http://localhost:4000');
+	// Read the existing file content
+	let existingContentData = '';
+	if (fs.existsSync(generatedServerPath)) {
+		existingContentData = fs.readFileSync(generatedServerPath, 'utf-8');
+	}
+	// Check if the content is different
+	if (existingContentData.trim() !== newContentData.trim()) {
+		fs.writeFileSync(generatedServerPath, newContentData, 'utf-8');
+		console.log(`   -> ${generatedServerPath}`);
+		// Ende Generierung Haupt-Server-Datei
+	}
 }
 
-startServer().catch(console.error);
+// FÜHRE DIE GENERIERUNG NICHT AUTOMATISCH AUS, WENN DIE DATEI IMPORTIERT WIRD
+// runCodeGeneration(); // <--- Diese Zeile auskommentieren oder entfernen für normalen Serverstart
+
+// =============================================================================
+// SCHRITT 5: Server starten (via generierter Datei)
+// =============================================================================
+
+async function initializeApp() {
+	// Optional: Führe die Generierung hier aus, wenn sie bei jedem Start laufen soll
+	// oder stelle sicher, dass sie vorher gelaufen ist (z.B. durch ein separates Build-Skript).
+	// Für die Entwicklung kann es nützlich sein, sie hier zu lassen, wenn sich Definitionen oft ändern.
+	runCodeGeneration(); // Ensure this is called to generate files before import
+
+	console.log('\n--- Initialisiere und starte den generierten Server ---');
+	try {
+		// Dynamischer Import der generierten Server-Startfunktion
+		// Wichtig: Pfad muss korrekt sein und .js für die Laufzeit verwenden
+		const { startServer } = await import('./generated/server.js'); // MODIFIED: Corrected import path
+		await startServer(); // Standardport 4000 wird in der Funktion verwendet
+	} catch (error) {
+		console.error('Fehler beim Starten des generierten Servers:', error);
+		console.error('Stelle sicher, dass die Codegenerierung (runCodeGeneration()) erfolgreich ausgeführt wurde und die Datei src/generated/server.js existiert.');
+		process.exit(1);
+	}
+}
+
+// Nur ausführen, wenn das Skript direkt gestartet wird
+// process.argv[1] is the path of the executed script.
+// import.meta.url is the URL of the current module file.
+if (process.argv[1] && import.meta.url === url.pathToFileURL(path.resolve(process.argv[1])).href) {
+	initializeApp().catch(err => {
+		console.error("Fehler beim Initialisieren der Anwendung:", err);
+		process.exit(1);
+	});
+}
+
+// AppRouter type should be imported from ./generated/server by the client, not re-exported here.

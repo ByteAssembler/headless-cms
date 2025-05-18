@@ -356,7 +356,8 @@ import { createHTTPHandler } from '@trpc/server/adapters/standalone';
 import { createServer as createHttpServer } from 'http';
 import { createContext, t as trpcInstance } from '../server/trpc';
 import { connectDb } from '../db';
-import * as allRoutersMap from './trpc/index';
+import * as allRoutersMap from './trpc/index'; // This imports all exports from index.ts into allRoutersMap
+import { allDefinitions } from '../index'; // This imports all exports from index.ts into allRoutersMap
 
 const appRouter = trpcInstance.router(allRoutersMap.default);
 
@@ -366,23 +367,29 @@ export async function startServer(port: number = 4000) {
   await connectDb();
 
   const trpcHandler = createHTTPHandler({
-    router: appRouter,
-    createContext,
+	router: appRouter,
+	createContext,
   });
 
   const httpServer = createHttpServer((req, res) => {
-    if (req.url === '/' && req.method === 'GET') {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      res.end(JSON.stringify({ message: 'Willkommen beim API-Server!' }));
-    } else {
-      trpcHandler(req, res);
-    }
+	if (req.url === '/' && req.method === 'GET') {
+	  res.setHeader('Content-Type', 'application/json');
+	  res.statusCode = 200;
+	  if (allDefinitions) {
+		res.end(JSON.stringify(allDefinitions));
+	  } else {
+		res.statusCode = 404;
+		res.end(JSON.stringify({ error: "Die 'allDefinitions' konnten nicht im Modul './trpc/index' gefunden werden." }));
+	  }
+	} else {
+	  trpcHandler(req, res);
+	}
   });
 
   httpServer.listen(port, () => {
-    console.log('🚀 tRPC server (generiert) läuft auf http://localhost:' + port);
-    console.log('Custom JSON content available at http://localhost:' + port + '/');
+	console.log('🚀 tRPC server (generiert) läuft auf http://localhost:' + port);
+	// Update the log message to reflect the new content at /
+	console.log('Schema JSON (allDefinitions) available at http://localhost:' + port + '/');
   });
 }
 `;

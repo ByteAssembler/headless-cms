@@ -352,7 +352,8 @@ export default allRouters;
 // File: src/generated/server.ts
 // GENERATED FILE - DO NOT EDIT MANUALLY!
 
-import { createHTTPServer } from '@trpc/server/adapters/standalone';
+import { createHTTPHandler } from '@trpc/server/adapters/standalone';
+import { createServer as createHttpServer } from 'http';
 import { createContext, t as trpcInstance } from '../server/trpc';
 import { connectDb } from '../db';
 import * as allRoutersMap from './trpc/index';
@@ -364,13 +365,24 @@ export type AppRouter = typeof appRouter;
 export async function startServer(port: number = 4000) {
   await connectDb();
 
-  const httpServer = createHTTPServer({
+  const trpcHandler = createHTTPHandler({
     router: appRouter,
     createContext,
   });
 
+  const httpServer = createHttpServer((req, res) => {
+    if (req.url === '/' && req.method === 'GET') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      res.end(JSON.stringify({ message: 'Willkommen beim API-Server!' }));
+    } else {
+      trpcHandler(req, res);
+    }
+  });
+
   httpServer.listen(port, () => {
-    console.log(\`🚀 tRPC server (generiert) läuft auf http://localhost:\${port}\`);
+    console.log('🚀 tRPC server (generiert) läuft auf http://localhost:' + port);
+    console.log('Custom JSON content available at http://localhost:' + port + '/');
   });
 }
 `;
@@ -405,10 +417,8 @@ async function initializeApp() {
 
 	console.log('\n--- Initialisiere und starte den generierten Server ---');
 	try {
-		// Dynamischer Import der generierten Server-Startfunktion
-		// Wichtig: Pfad muss korrekt sein und .js für die Laufzeit verwenden
-		const { startServer } = await import('./generated/server.js'); // MODIFIED: Corrected import path
-		await startServer(); // Standardport 4000 wird in der Funktion verwendet
+		const { startServer } = await import('./generated/server');
+		await startServer();
 	} catch (error) {
 		console.error('Fehler beim Starten des generierten Servers:', error);
 		console.error('Stelle sicher, dass die Codegenerierung (runCodeGeneration()) erfolgreich ausgeführt wurde und die Datei src/generated/server.js existiert.');
